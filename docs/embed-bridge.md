@@ -36,6 +36,34 @@ until it is answered also tells the parent the editor is up, if it missed `boote
 The export is the document as it was last committed: finish an edit in progress (e.g. typing in a
 text frame) before asking for it.
 
+## White label
+
+With `?embed=1` the editor presents itself as the **Prolytiq Figure Editor**: nothing shown names
+VectorCraft, ArtCraft or Crafting Apps, and nothing links to Discord. The switch is
+`vectorcraft_ui_egui::white_label`, which the page turns on before the first frame; without
+`?embed=1` (and on the desktop) the default branding is unchanged.
+
+- **Names.** Every interface string goes through `i18n`, which renames VectorCraft → "Prolytiq
+  Figure Editor" and ArtCraft / Crafting Apps → "Prolytiq" in every language (the `i18n/*.tsv`
+  catalogs are untouched). The app-bar title, window title, About box, Home screen ("Welcome to
+  Prolytiq Figure Editor"), menus, status messages and the startup error say the same.
+- **Page.** `index.html` carries the embed build's title ("Prolytiq Figure Editor") and loading
+  text ("Welcome to the Prolytiq figure editor"), which is what shows before the wasm boots. The
+  plain web app puts "VectorCraft" back in the title and loading text as soon as it starts.
+- **Removed.** The app bar's Discord button, the Help menu's Discord / website / app page /
+  GitHub items, the Home screen's Community section, the About box's links and those commands in
+  the command palette. `help.discord` and the others still answer agents with their URL, but the
+  UI doesn't open them.
+- **Mark.** The dragon app icon is replaced by a mark drawn in code (a navy tile with a white "P"
+  over an accent bar); no image asset is added.
+- **Theme.** The interface defaults to Medium Light and the canvas around the artboards to navy
+  `#0B1E3A`; the accent and selection colour stays `#1473E6`. An explicit Canvas Color preference
+  wins, as does any brightness other than the default Medium Dark (Medium Dark itself reads as
+  "not chosen" and shows Medium Light).
+
+Internal identifiers stay as they are: the `vectorcraft:` message types, the `.vectorcraft` file
+format, element ids and console log lines.
+
 ## Security
 
 The bridge accepts messages from any origin and posts its replies with target origin `"*"`, so the

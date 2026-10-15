@@ -32,6 +32,9 @@ fn texture(ctx: &Context) -> TextureHandle {
 
 /// Paint the mark into `r` (square).
 pub fn paint_mark(ui: &Ui, r: Rect) {
+    if crate::white_label::on() {
+        return crate::white_label::paint_mark(ui, r);
+    }
     let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
     ui.painter().image(texture(ui.ctx()).id(), r, uv, Color32::WHITE);
 }

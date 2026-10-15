@@ -58,6 +58,7 @@ pub mod toolbar;
 mod touch;
 mod ui_fonts;
 pub mod unsaved;
+pub mod white_label;
 pub mod widgets;
 pub mod workspaces;
 
@@ -151,6 +152,8 @@ mod tests_sysclip_emf;
 mod tests_sysclip_probe;
 #[cfg(test)]
 mod tests_transparencygrid;
+#[cfg(test)]
+mod tests_white_label;
 #[cfg(test)]
 mod tests_widthtool;
 
@@ -735,6 +738,9 @@ impl VectorcraftApp {
 
     /// Run a Help link command and open the URL it returns.
     pub fn open_link(&mut self, id: &str) {
+        if crate::white_label::hides(id) {
+            return;
+        }
         if let Ok(v) = self.run(id, serde_json::json!({}))
             && let Some(u) = v["url"].as_str()
         {

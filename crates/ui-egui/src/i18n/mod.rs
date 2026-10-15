@@ -430,17 +430,17 @@ pub fn t(s: &str) -> &str {
 
 /// Translate an English UI string; unknown strings come back unchanged.
 pub fn tr(lang: Lang, s: &str) -> &str {
-    lang.catalog().plain(s).unwrap_or(s)
+    crate::white_label::rebrand_str(lang.catalog().plain(s).unwrap_or(s))
 }
 
 /// Like [`tr`], for an English string that needs a disambiguating `context`.
 pub fn tr_ctx<'a>(lang: Lang, context: &str, s: &'a str) -> &'a str {
-    lang.catalog().contextual(context, s).unwrap_or_else(|| tr(lang, s))
+    lang.catalog().contextual(context, s).map(crate::white_label::rebrand_str).unwrap_or_else(|| tr(lang, s))
 }
 
 /// A string keyed by its command id, falling back to the translation of the English `label`.
 pub fn tr_id<'a>(lang: Lang, id: &str, label: &'a str) -> &'a str {
-    lang.catalog().id(id).unwrap_or_else(|| tr(lang, label))
+    lang.catalog().id(id).map(crate::white_label::rebrand_str).unwrap_or_else(|| tr(lang, label))
 }
 
 /// [`tr_id`] in the current language.
@@ -461,7 +461,7 @@ pub fn fmt(template: &str, args: &[(&str, &str)]) -> String {
 pub fn trn(lang: Lang, n: u64, one: &str, other: &str) -> String {
     let idx = (lang.0.plural)(n);
     let text = lang.catalog().plural(one, other, idx).unwrap_or(if n == 1 { one } else { other });
-    fmt(text, &[("n", &n.to_string())])
+    crate::white_label::rebrand(&fmt(text, &[("n", &n.to_string())])).into_owned()
 }
 
 /// An entry of a list that mixes interface labels with names (user, file or system data) as
@@ -478,7 +478,7 @@ const MESSAGE_DEPTH: usize = 3;
 /// Translate a status or error message for display (see the module docs). Unknown messages, and
 /// parts of them (file names, numbers, a reason with no entry), stay as they are.
 pub fn message(lang: Lang, s: &str) -> String {
-    message_at(lang, s, MESSAGE_DEPTH)
+    crate::white_label::rebrand(&message_at(lang, s, MESSAGE_DEPTH)).into_owned()
 }
 
 fn message_at(lang: Lang, s: &str, depth: usize) -> String {

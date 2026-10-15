@@ -104,14 +104,14 @@ fn canvas_color(key: &str) -> Option<egui::Color32> {
 /// Per frame: push UI-side preferences into egui / the renderer when they change.
 pub fn apply_runtime(app: &mut VectorcraftApp, ctx: &egui::Context) {
     let p = &app.session.prefs;
-    if let Some(b) = Brightness::parse(&p.ui_brightness)
+    if let Some(b) = Brightness::parse(&p.ui_brightness).map(crate::white_label::brightness)
         && b != app.ui.brightness
     {
         app.ui.brightness = b;
     }
     let want = Applied {
         brightness: app.ui.brightness,
-        canvas: canvas_color(&p.canvas_color),
+        canvas: crate::white_label::pasteboard(canvas_color(&p.canvas_color)),
         threads: p.render_threads,
         tool_tips: p.show_tool_tips,
         scrub: p.scrub_numeric_fields,

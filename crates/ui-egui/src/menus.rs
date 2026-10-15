@@ -2070,6 +2070,32 @@ pub fn menu_tree() -> Vec<(&'static str, Vec<Item>)> {
 }
 
 pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
+    let tree = full_menu_tree(english_names);
+    if !crate::white_label::on() {
+        return tree;
+    }
+    tree.into_iter().map(|(title, items)| (title, without_hidden(items))).collect()
+}
+
+/// White-label mode: `items` without the commands it hides, and without the separators that
+/// leaves at either end or doubled.
+fn without_hidden(items: Vec<Item>) -> Vec<Item> {
+    let mut out: Vec<Item> = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            Item::Cmd(_, id, _) if crate::white_label::hides(id) => {}
+            Item::Sub(label, sub) => out.push(Item::Sub(label, without_hidden(sub))),
+            Sep if out.is_empty() || matches!(out.last(), Some(Sep)) => {}
+            item => out.push(item),
+        }
+    }
+    if matches!(out.last(), Some(Sep)) {
+        out.pop();
+    }
+    out
+}
+
+fn full_menu_tree(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
     let panel = |label: &'static str, id: &'static str| cp(label, "window.panel", json!({ "panel": id }));
     vec![
         (

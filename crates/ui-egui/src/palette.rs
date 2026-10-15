@@ -62,6 +62,7 @@ fn entries(ctx: &egui::Context, lang: crate::i18n::Lang) -> Arc<Vec<Entry>> {
     let built: Arc<Vec<Entry>> = Arc::new(
         items()
             .into_iter()
+            .filter(|(_, id, _)| !crate::white_label::hides(id))
             .map(|(label, id, shortcut)| {
                 let shown = shown_label(lang, &label);
                 let haystack = format!("{}\n{}\n{}", label.to_lowercase(), shown.to_lowercase(), id.to_lowercase());

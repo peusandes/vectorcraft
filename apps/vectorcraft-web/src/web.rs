@@ -14,7 +14,7 @@ use vectorcraft_ui_egui::graphics::GraphicsLoss;
 use vectorcraft_ui_egui::i18n;
 use vectorcraft_ui_egui::place::{DropTarget, PlaceArrival, PlaceInbox};
 use vectorcraft_ui_egui::print::{PrintJob, PrintService, Printer};
-use vectorcraft_ui_egui::{Services, VectorcraftApp};
+use vectorcraft_ui_egui::{Services, VectorcraftApp, white_label};
 use wasm_bindgen::JsCast as _;
 
 use crate::bridge::{self, Rejected, Request};
@@ -72,6 +72,13 @@ pub fn start() {
         log::error!("missing <canvas id=\"{CANVAS_ID}\">");
         return;
     };
+    // Embed mode shows the host's product (white-label), from the page title and the loading text
+    // on.
+    let embed = query_param("embed").as_deref() == Some("1");
+    if embed {
+        white_label::enable();
+    }
+    brand_page();
     detect_language();
     wasm_bindgen_futures::spawn_local(async move {
         // Before the first frame, which looks for copies a crash left behind.
@@ -87,7 +94,7 @@ pub fn start() {
             pasted: Rc::default(),
             locks,
             restarts: 0,
-            embed: (query_param("embed").as_deref() == Some("1")).then(Rc::default),
+            embed: embed.then(Rc::default),
         };
         track_paste(&host.pasted);
         if let Some(embed) = &host.embed {
@@ -155,7 +162,9 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                 post_to_parent(&bridge::booted());
             }
         }
-        (Err(e), None) => notice(&[&format!("VectorCraft failed to start: {}", js_err(e)), "A browser with WebGPU or WebGL2 is required."]),
+        (Err(e), None) => {
+            notice(&[&format!("{} failed to start: {}", white_label::app_name(), js_err(e)), "A browser with WebGPU or WebGL2 is required."])
+        }
         (Err(e), Some(kept)) => {
             log::error!("vectorcraft-web: couldn't restart the graphics: {}", js_err(e));
             give_up(slot.borrow_mut().take(), kept);
@@ -185,7 +194,20 @@ fn detect_language() {
     }
     i18n::set_system_locales(tags.as_slice());
     if let Some(el) = element(LOADING_ID) {
-        el.set_text_content(Some(i18n::message(i18n::system_lang(), "Loading VectorCraft…").as_str()));
+        let text = if white_label::on() {
+            "Welcome to the Prolytiq figure editor".to_string()
+        } else {
+            i18n::message(i18n::system_lang(), "Loading VectorCraft…")
+        };
+        el.set_text_content(Some(text.as_str()));
+    }
+}
+
+/// The page's title (the browser tab): the app's name. `index.html` carries the embed build's,
+/// so the plain web app puts its own back.
+fn brand_page() {
+    if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+        document.set_title(white_label::app_name());
     }
 }
 
