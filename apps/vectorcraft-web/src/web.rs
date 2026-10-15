@@ -1,5 +1,6 @@
 //! The browser shell: web `Services`, drag-and-drop, pasted pictures and files, the eframe web
-//! runner, and starting again with new graphics when the page loses them (#369).
+//! runner, starting again with new graphics when the page loses them (#369), and the embed
+//! bridge's page side (`?embed=1`).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -16,6 +17,7 @@ use vectorcraft_ui_egui::print::{PrintJob, PrintService, Printer};
 use vectorcraft_ui_egui::{Services, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
 
+use crate::bridge::{self, Rejected, Request};
 use crate::locks::WebLocks;
 
 type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
@@ -29,6 +31,14 @@ type DragPos = Rc<Cell<Option<(f32, f32, bool)>>>;
 #[derive(Default)]
 struct Pasted {
     flavour: Option<(Flavour, egui::Modifiers)>,
+    ctx: Option<egui::Context>,
+}
+
+/// Embed mode (`?embed=1`): the parent page's requests waiting for the next frame, and the context
+/// to wake for them (the current runner's).
+#[derive(Default)]
+struct Embed {
+    requests: Vec<Request>,
     ctx: Option<egui::Context>,
 }
 
@@ -52,6 +62,8 @@ struct Host {
     locks: Option<WebLocks>,
     /// Graphics restarts so far.
     restarts: u32,
+    /// Set in embed mode only.
+    embed: Option<Rc<RefCell<Embed>>>,
 }
 
 pub fn start() {
@@ -75,8 +87,12 @@ pub fn start() {
             pasted: Rc::default(),
             locks,
             restarts: 0,
+            embed: (query_param("embed").as_deref() == Some("1")).then(Rc::default),
         };
         track_paste(&host.pasted);
+        if let Some(embed) = &host.embed {
+            track_messages(embed);
+        }
         run(host, canvas, None).await;
     });
 }
@@ -93,6 +109,7 @@ struct Moving {
 async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Moving>) {
     track_drag(&canvas, &host.drag);
     let kept = moving.as_ref().map(|m| m.kept);
+    let embed = host.embed.is_some();
     // The app until the new runner takes it (still here if starting fails before).
     let slot = Rc::new(RefCell::new(moving.map(|m| m.app)));
     let (runner, taken, page) = (host.runner.clone(), slot.clone(), canvas.clone());
@@ -111,6 +128,9 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
                     rs.device.set_device_lost_callback(move |reason, msg| loss.report(&ctx, format!("{reason:?}: {msg}")));
                 }
                 host.pasted.borrow_mut().ctx = Some(ctx.clone());
+                if let Some(embed) = &host.embed {
+                    embed.borrow_mut().ctx = Some(ctx.clone());
+                }
                 let services = services(host.inbox.clone(), host.place_inbox.clone(), ctx.clone(), host.locks.clone());
                 let app = match taken.borrow_mut().take() {
                     Some(mut app) => {
@@ -126,9 +146,13 @@ async fn run(host: Host, canvas: web_sys::HtmlCanvasElement, moving: Option<Movi
         )
         .await;
     match (result, kept) {
-        (Ok(()), _) => {
+        (Ok(()), first) => {
             if let Some(el) = element(LOADING_ID) {
                 el.remove();
+            }
+            // The parent hears once, not again after a graphics restart.
+            if embed && first.is_none() {
+                post_to_parent(&bridge::booted());
             }
         }
         (Err(e), None) => notice(&[&format!("VectorCraft failed to start: {}", js_err(e)), "A browser with WebGPU or WebGL2 is required."]),
@@ -241,6 +265,49 @@ fn track_paste(pasted: &Rc<RefCell<Pasted>>) {
     on_paste.forget();
 }
 
+/// Embed mode: take the parent page's bridge messages (any origin: see `docs/embed-bridge.md`) to
+/// the next frame. Bad bridge messages are answered at once; other pages' messages are logged.
+fn track_messages(embed: &Rc<RefCell<Embed>>) {
+    let Some(window) = web_sys::window() else { return };
+    let embed = embed.clone();
+    let on_message = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
+        let data = e.data();
+        // Parents may post JSON text or an object.
+        let text = data.as_string().or_else(|| js_sys::JSON::stringify(&data).ok().and_then(|s| s.as_string())).unwrap_or_default();
+        match bridge::parse(&text) {
+            Ok(req) => {
+                let mut embed = embed.borrow_mut();
+                embed.requests.push(req);
+                if let Some(ctx) = &embed.ctx {
+                    ctx.request_repaint();
+                }
+            }
+            Err(Rejected::Bad { kind, id, error }) => {
+                log::warn!("embed bridge: {kind}: {error}");
+                post_to_parent(&bridge::reply_err(&kind, &id, &error));
+            }
+            Err(Rejected::Foreign) => log::info!("embed bridge: ignored a message from {}", e.origin()),
+        }
+    });
+    if let Err(e) = window.add_event_listener_with_callback("message", on_message.as_ref().unchecked_ref()) {
+        log::error!("couldn't follow message events: {e:?}");
+    }
+    // The listener lives as long as the page.
+    on_message.forget();
+}
+
+/// Post `json` (a bridge message) to the parent page as an object.
+fn post_to_parent(json: &str) {
+    let Some(parent) = web_sys::window().and_then(|w| w.parent().ok().flatten()) else {
+        log::error!("embed bridge: no parent page to post to");
+        return;
+    };
+    let message = js_sys::JSON::parse(json).unwrap_or_else(|_| json.into());
+    if let Err(e) = parent.post_message(&message, "*") {
+        log::error!("embed bridge: couldn't post to the parent page: {}", js_err(e));
+    }
+}
+
 /// Report the loss of `canvas`'s WebGL context to `loss` (WebGPU devices report theirs through
 /// wgpu).
 fn watch_canvas(canvas: &web_sys::HtmlCanvasElement, loss: &GraphicsLoss, ctx: &egui::Context) {
@@ -348,6 +415,10 @@ impl eframe::App for WebShell {
             self.restart(&why);
         }
         let Some(app) = &mut self.app else { return };
+        let requests = self.host.embed.as_ref().map(|e| std::mem::take(&mut e.borrow_mut().requests)).unwrap_or_default();
+        for req in requests {
+            post_to_parent(&bridge::handle(app, req));
+        }
         let pasted = self.host.pasted.borrow_mut().flavour.take();
         if let Some((f, held)) = pasted {
             app.paste_from_host(ctx, f, held);
