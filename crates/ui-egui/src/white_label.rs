@@ -5,8 +5,9 @@
 //!
 //! While on: every interface string ([`crate::i18n`]) has VectorCraft / ArtCraft renamed
 //! ([`rebrand`]), the community links (Discord, website, app page, GitHub) are gone ([`hides`]),
-//! the brand mark is drawn in code ([`paint_mark`]), and the default theme is Medium Light on a
-//! navy canvas ([`brightness`], [`pasteboard`]); an explicit preference still wins.
+//! the brand mark is drawn in code ([`paint_mark`]), the Home screen has the host's tagline
+//! ([`tagline`]), and the default theme is Medium Light on a navy canvas ([`brightness`],
+//! [`pasteboard`]), the Home screen included ([`home_tokens`]); an explicit preference still wins.
 //!
 //! The switch is per thread: the web app has one, and tests that turn it on don't reach the other
 //! tests running beside them.
@@ -112,6 +113,32 @@ pub fn brightness(pref: crate::theme::Brightness) -> crate::theme::Brightness {
 /// The canvas colour when Canvas Color matches the interface (`None`): navy in white-label mode.
 pub fn pasteboard(chosen: Option<Color32>) -> Option<Color32> {
     chosen.or_else(|| on().then_some(NAVY))
+}
+
+/// The Home screen's tagline in white-label mode (English: the host's product line).
+pub const TAGLINE: &str = "Scientific figures, publication-ready.";
+
+/// The Home screen's tagline: [`TAGLINE`] in white-label mode, else `default`.
+pub fn tagline(default: &str) -> &str {
+    if on() { TAGLINE } else { default }
+}
+
+/// The tokens the Home screen and the empty window are drawn with. In white-label mode they sit
+/// on the canvas colour (`pasteboard`: navy, or Canvas Color when set) instead of `panel_darker`,
+/// with light text when that colour is dark; otherwise the tokens are unchanged.
+pub fn home_tokens(ctx: &egui::Context) -> crate::theme::Tokens {
+    let mut t = crate::theme::Tokens::get(ctx);
+    if !on() {
+        return t;
+    }
+    t.panel_darker = t.pasteboard;
+    let [r, g, b, _] = t.pasteboard.to_array();
+    let luma = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
+    if luma < 128 && !t.dark {
+        let ink = crate::theme::Tokens::for_brightness(crate::theme::Brightness::Dark);
+        (t.text, t.text_dim, t.text_strong, t.icon) = (ink.text, ink.text_dim, ink.text_strong, ink.icon);
+    }
+    t
 }
 
 /// The white-label brand mark, drawn in code (no image asset): a navy rounded tile with a white

@@ -56,8 +56,11 @@ VectorCraft, ArtCraft or Crafting Apps, and nothing links to Discord. The switch
   UI doesn't open them.
 - **Mark.** The dragon app icon is replaced by a mark drawn in code (a navy tile with a white "P"
   over an accent bar); no image asset is added.
+- **Home screen.** Its tagline reads "Scientific figures, publication-ready." instead of
+  VectorCraft's.
 - **Theme.** The interface defaults to Medium Light and the canvas around the artboards to navy
-  `#0B1E3A`; the accent and selection colour stays `#1473E6`. An explicit Canvas Color preference
+  `#0B1E3A`, which is also the background of the Home screen and of the empty window with no
+  document open (with light text on it); the accent and selection colour stays `#1473E6`. An explicit Canvas Color preference
   wins, as does any brightness other than the default Medium Dark (Medium Dark itself reads as
   "not chosen" and shows Medium Light).
 

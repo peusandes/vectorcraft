@@ -168,7 +168,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     }
     if app.session.active().is_none() {
         // No document and Show The Home Screen When No Documents Are Open off: an empty window.
-        ui.painter().rect_filled(full, 0.0, t.panel_darker);
+        ui.painter().rect_filled(full, 0.0, crate::white_label::home_tokens(ui.ctx()).panel_darker);
         return;
     }
     let rect = if app.ui.view.rulers && app.ui.screen_mode < 3 { egui::Rect::from_min_max(full.min + vec2(RULER, RULER), full.max) } else { full };
@@ -2022,14 +2022,14 @@ fn draw_overlays(p: &egui::Painter, xf: &Xf, overlays: &[Overlay], t: &Tokens, l
 
 /// The Home screen (`app.home`; with no document open, unless its preference is off).
 fn home(app: &mut VectorcraftApp, ui: &mut Ui, rect: egui::Rect) {
-    let t = Tokens::get(ui.ctx());
+    let t = crate::white_label::home_tokens(ui.ctx());
     ui.painter().rect_filled(rect, 0.0, t.panel_darker);
     let inner = rect.shrink2(vec2((rect.width() - 820.0).max(40.0) / 2.0, 60.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
     let ui = &mut child;
     ui.label(egui::RichText::new(tl!("Welcome to VectorCraft")).font(theme::semibold(26.0)).color(t.text));
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(tl!("Vector illustration — fast, open, scriptable.")).size(14.0).color(t.text_dim));
+    ui.label(egui::RichText::new(crate::white_label::tagline(tl!("Vector illustration — fast, open, scriptable."))).size(14.0).color(t.text_dim));
     ui.add_space(22.0);
     ui.horizontal(|ui| {
         if widgets::primary_button(ui, tl!("New file")).clicked() {
@@ -2071,7 +2071,7 @@ fn recent(app: &mut VectorcraftApp, ui: &mut Ui) {
     if files.is_empty() {
         return;
     }
-    let t = Tokens::get(ui.ctx());
+    let t = crate::white_label::home_tokens(ui.ctx());
     ui.add_space(28.0);
     ui.label(egui::RichText::new(tl!("Recent Files")).font(theme::semibold(14.0)).color(t.text));
     ui.add_space(8.0);

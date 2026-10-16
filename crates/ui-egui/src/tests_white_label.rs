@@ -147,3 +147,61 @@ fn off_the_default_branding_is_unchanged() {
     crate::prefs_dialog::apply_runtime(&mut app, &ctx);
     assert_eq!(app.ui.brightness, Brightness::MediumDark);
 }
+
+fn rects(s: &egui::Shape, out: &mut Vec<(egui::Rect, egui::Color32)>) {
+    match s {
+        egui::Shape::Rect(r) => out.push((r.rect, r.fill)),
+        egui::Shape::Vec(v) => v.iter().for_each(|s| rects(s, out)),
+        _ => {}
+    }
+}
+
+/// The fills of the window-sized rectangles (40% of the window or more) in a whole-window frame:
+/// the panels behind and the Home screen's (or the empty window's) background.
+fn backgrounds(app: &mut VectorcraftApp, ctx: &egui::Context) -> Vec<egui::Color32> {
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+    let mut found = vec![];
+    for _ in 0..4 {
+        let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+            app.logic(ui.ctx());
+            app.ui(ui);
+        });
+        out.textures_delta.clear();
+        found.clear();
+        out.shapes.iter().for_each(|c| rects(&c.shape, &mut found));
+    }
+    found.into_iter().filter(|(r, c)| c.a() > 0 && r.area() >= 0.4 * screen.area()).map(|(_, c)| c).collect()
+}
+
+#[test]
+fn the_home_screen_sits_on_navy_with_the_prolytiq_tagline_until_canvas_color_is_set() {
+    let _on = WhiteLabel::on();
+    let (mut app, ctx) = new_app();
+    assert!(backgrounds(&mut app, &ctx).contains(&white_label::NAVY));
+    let home = frame_texts(&mut app, &ctx);
+    assert!(home.iter().any(|t| t == white_label::TAGLINE), "{home:?}");
+    assert!(!home.iter().any(|t| t.starts_with("Vector illustration")), "{home:?}");
+    // Light text on the dark navy.
+    assert!(crate::white_label::home_tokens(&ctx).text.r() > 0x90);
+    // The empty window (Home off) too.
+    app.session.prefs.show_home_screen = false;
+    assert!(backgrounds(&mut app, &ctx).contains(&white_label::NAVY));
+    app.session.prefs.show_home_screen = true;
+    // An explicit Canvas Color wins.
+    app.run("prefs.set", json!({"key": "canvasColor", "value": "white"})).unwrap();
+    let shown = backgrounds(&mut app, &ctx);
+    assert!(shown.contains(&egui::Color32::WHITE) && !shown.contains(&white_label::NAVY), "{shown:?}");
+}
+
+#[test]
+fn off_the_home_screen_keeps_its_grey_and_tagline() {
+    let (mut app, ctx) = new_app();
+    crate::prefs_dialog::apply_runtime(&mut app, &ctx);
+    let grey = Tokens::get(&ctx).panel_darker;
+    assert_ne!(grey, white_label::NAVY);
+    let shown = backgrounds(&mut app, &ctx);
+    assert!(shown.contains(&grey) && !shown.contains(&white_label::NAVY), "{shown:?}");
+    let home = frame_texts(&mut app, &ctx);
+    assert!(home.iter().any(|t| t == "Vector illustration — fast, open, scriptable."), "{home:?}");
+    assert!(!home.iter().any(|t| t == white_label::TAGLINE), "{home:?}");
+}
