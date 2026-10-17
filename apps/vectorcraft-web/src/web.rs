@@ -288,10 +288,12 @@ fn track_paste(pasted: &Rc<RefCell<Pasted>>) {
 }
 
 /// Embed mode: take the parent page's bridge messages (any origin: see `docs/embed-bridge.md`) to
-/// the next frame. Bad bridge messages are answered at once; other pages' messages are logged.
+/// the next frame. Bad bridge messages are answered at once (and logged once per type); the
+/// editor's own messages come back are dropped; other pages' messages are logged.
 fn track_messages(embed: &Rc<RefCell<Embed>>) {
     let Some(window) = web_sys::window() else { return };
     let embed = embed.clone();
+    let mut warned = std::collections::HashSet::<String>::new();
     let on_message = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
         let data = e.data();
         // Parents may post JSON text or an object.
@@ -305,9 +307,13 @@ fn track_messages(embed: &Rc<RefCell<Embed>>) {
                 }
             }
             Err(Rejected::Bad { kind, id, error }) => {
-                log::warn!("embed bridge: {kind}: {error}");
+                // Capped: a parent posting bad messages in a loop mustn't flood the console.
+                if warned.len() < 32 && warned.insert(kind.clone()) {
+                    log::warn!("embed bridge: {kind}: {error}");
+                }
                 post_to_parent(&bridge::reply_err(&kind, &id, &error));
             }
+            Err(Rejected::Own) => {}
             Err(Rejected::Foreign) => log::info!("embed bridge: ignored a message from {}", e.origin()),
         }
     });
@@ -318,12 +324,18 @@ fn track_messages(embed: &Rc<RefCell<Embed>>) {
     on_message.forget();
 }
 
-/// Post `json` (a bridge message) to the parent page as an object.
+/// Post `json` (a bridge message) to the parent page as an object. Nothing is posted when the
+/// page was opened directly (it is its own parent: there is no host, and the message would come
+/// back to the editor).
 fn post_to_parent(json: &str) {
-    let Some(parent) = web_sys::window().and_then(|w| w.parent().ok().flatten()) else {
+    let Some(window) = web_sys::window() else { return };
+    let Some(parent) = window.parent().ok().flatten() else {
         log::error!("embed bridge: no parent page to post to");
         return;
     };
+    if js_sys::Object::is(&parent, &window) {
+        return;
+    }
     let message = js_sys::JSON::parse(json).unwrap_or_else(|_| json.into());
     if let Err(e) = parent.post_message(&message, "*") {
         log::error!("embed bridge: couldn't post to the parent page: {}", js_err(e));

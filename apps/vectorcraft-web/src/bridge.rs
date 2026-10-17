@@ -33,6 +33,9 @@ pub enum Request {
 pub enum Rejected {
     /// Not a bridge message (other scripts on the page post messages too): ignored.
     Foreign,
+    /// A message the editor posts itself (`vectorcraft:booted`, or a reply: it has `ok`), come
+    /// back to it: dropped silently. Answering it would answer our own answer, without end.
+    Own,
     /// A bridge message that can't be carried out: answered with `ok: false`.
     Bad { kind: String, id: Value, error: String },
 }
@@ -45,6 +48,9 @@ pub fn parse(text: &str) -> Result<Request, Rejected> {
     let Some(kind) = m.get("type").and_then(Value::as_str).filter(|t| t.starts_with(PREFIX)) else {
         return Err(Rejected::Foreign);
     };
+    if kind == BOOTED || m.contains_key("ok") {
+        return Err(Rejected::Own);
+    }
     let id = m.get("id").cloned().unwrap_or(Value::Null);
     let bad = |error: String| Rejected::Bad { kind: kind.to_string(), id: id.clone(), error };
     match kind {
@@ -147,6 +153,22 @@ mod tests {
         assert_eq!((kind.as_str(), id), ("vectorcraft:frobnicate", json!(4)));
         assert!(error.contains("unknown"));
         assert!(matches!(parse(r#"{"type":"vectorcraft:load","id":5,"svg":7}"#), Err(Rejected::Bad { .. })));
+    }
+
+    #[test]
+    fn drops_its_own_messages_come_back() {
+        // On a page opened directly the editor is its own parent: what it posts comes back to it.
+        assert_eq!(parse(&booted()), Err(Rejected::Own));
+        let mut app = app();
+        for text in
+            [r#"{"type":"vectorcraft:ready","id":1}"#, r#"{"type":"vectorcraft:export","id":2}"#, r#"{"type":"vectorcraft:load","id":3,"svg":"x"}"#]
+        {
+            let reply = handle(&mut app, parse(text).unwrap());
+            assert_eq!(parse(&reply), Err(Rejected::Own), "{reply}");
+        }
+        for (kind, id, error) in [(BOOTED, json!(null), "x"), ("vectorcraft:frobnicate", json!(4), "unknown")] {
+            assert_eq!(parse(&reply_err(kind, &id, error)), Err(Rejected::Own));
+        }
     }
 
     #[test]

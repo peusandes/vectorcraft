@@ -27,7 +27,12 @@ value, `null` when left out) that the reply echoes, so the parent can match repl
 A request that fails gets `{"type":<request type>,"id":n,"ok":false,"error":"…"}`: an SVG that
 doesn't open, an export with no document open, a load without a string `svg` or with more than
 64 MiB of it, an unknown `vectorcraft:` type. Messages whose `type` doesn't start with
-`vectorcraft:` (other scripts post messages too) are logged to the console and ignored.
+`vectorcraft:` (other scripts post messages too) are logged to the console and ignored. The
+console warns about a bad bridge message once per type, not on every one.
+
+The editor ignores its own messages if they come back to it (`vectorcraft:booted`, and any message
+with an `ok` field, i.e. a reply). When the page is opened directly rather than in a frame, it is
+its own parent: it posts nothing then, `booted` included.
 
 Requests wait for the editor's next frame, so the parent can post them as soon as it likes: ones
 posted before `vectorcraft:booted` are answered once the editor runs. Sending `vectorcraft:ready`
